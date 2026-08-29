@@ -21,13 +21,13 @@ const db = createDatabase()
 
 
 
-// for (let i = 0; i < 1; i++) {
+// for (let i = 0; i < 100_000; i++) {
 //   const res = db.query({
 //     action: QueryAction.InsertTable,
 //     tableName: "users",
 //     data: {
 //       username: "Hello",
-//       id: i
+//       id: 0
 //     }
 //   });
 
@@ -41,11 +41,12 @@ const db = createDatabase()
 
 const t1 = performance.now()
 const [res] = db.query({
-  action: QueryAction.FindOneTable,
+  action: QueryAction.FindTable,
   tableName: "users",
+  limit: 1,
   data: {
-    id: 1
+    username: "Hello"
   }
 });
-console.log(performance.now() - t1)
-console.log(res);
+const t2 = performance.now();
+console.log(t2 - t1)

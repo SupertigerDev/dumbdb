@@ -15,7 +15,7 @@ const DatabaseError = {
 export enum QueryAction {
   CreateTable = 0,
   InsertTable = 1,
-  FindOneTable = 2
+  FindTable = 2
 }
 
 export enum FieldType {
@@ -52,14 +52,15 @@ type InsertTableQuery = {
   data: Record<string, any>
 }
 
-type FindOneTableQuery = {
-  action: QueryAction.FindOneTable,
+type FindTableQuery = {
+  action: QueryAction.FindTable,
   tableName: string,
+  limit?: number;
   data: Record<string, any>
 }
 
 
-export type Query = CreateTableQuery | InsertTableQuery | FindOneTableQuery
+export type Query = CreateTableQuery | InsertTableQuery | FindTableQuery
 
 interface DatabaseOptions {
   rootDir?: string
@@ -129,7 +130,7 @@ export const createDatabase = (opts?: DatabaseOptions) => {
     return [true, null] as const;
   }
 
-  const handleFindOneTable = (query: FindOneTableQuery) => {
+  const handleFindTable = (query: FindTableQuery) => {
     const tableName = query.tableName;
     const tablePath = path.join(rootDir, tableName)
     const metadataPath = path.join(tablePath, "metadata.json");
@@ -141,8 +142,6 @@ export const createDatabase = (opts?: DatabaseOptions) => {
     const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8")) as Table;
 
     const metadataFieldNames = Object.keys(metadata.fields);
-
-
 
     for (let userField in query.data) {
       const fieldMetadata = metadata.fields[userField];
@@ -156,43 +155,43 @@ export const createDatabase = (opts?: DatabaseOptions) => {
       }
     }
 
-
     const userInput = metadataFieldNames.map(f => query.data[f])
 
-    for (const line of readLinesSync(dataPath)) {
-      const rowValues = JSON.parse(`[${line}]`)
+    const results: Record<string, any>[] = [];
 
-      let isMatch: boolean | undefined = undefined;
+
+    for (const line of readLinesSync(dataPath)) {
+      if (query.limit && results.length === query.limit) {
+        break;
+      }
+      const rowValues = JSON.parse(`[${line}]`);
+
+      let isMatch = true;
 
       for (let fieldIndex = 0; fieldIndex < userInput.length; fieldIndex++) {
         const searchValue = userInput[fieldIndex];
         if (searchValue === undefined) continue;
 
-        isMatch = rowValues[fieldIndex] === searchValue;
-
-        if (isMatch === false) break;
-        break
+        if (rowValues[fieldIndex] !== searchValue) {
+          isMatch = false;
+          break;
+        }
       }
 
       if (isMatch) {
-
-        const fieldNames = Object.keys(metadata.fields);
         const result: Record<string, any> = {};
 
         for (let fieldIndex = 0; fieldIndex < rowValues.length; fieldIndex++) {
-          const fieldValue = rowValues[fieldIndex];
-          const fieldName = fieldNames[fieldIndex];
+          const fieldName = metadataFieldNames[fieldIndex];
           if (fieldName === undefined) continue;
-          result[fieldName] = fieldValue;
+          result[fieldName] = rowValues[fieldIndex];
         }
 
-        return [result, null]
+        results.push(result);
       }
-
     }
-    return [null, null] as const;
+    return [results, null] as const;
   }
-
 
   const query = (query: Query) => {
     switch (query.action) {
@@ -200,8 +199,8 @@ export const createDatabase = (opts?: DatabaseOptions) => {
         return handleCreateTable(query)
       case QueryAction.InsertTable:
         return handleInsertTable(query)
-      case QueryAction.FindOneTable:
-        return handleFindOneTable(query)
+      case QueryAction.FindTable:
+        return handleFindTable(query)
       default:
         break;
     }
