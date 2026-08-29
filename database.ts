@@ -6,7 +6,7 @@ const DatabaseError = {
   TableExists: (tableName: string) => ({ code: 1, message: `Table "${tableName}" already exists.` }),
   TableNotExist: (tableName: string) => ({ code: 2, message: `Table "${tableName}" does not exist.` }),
   FieldNotExist: (field: string, tableName: string) => ({ code: 3, message: `Field "${field}" does not exist in table "${tableName}".` }),
-  FieldTypeMissmatch: (wanted: string, got: string, field: string, tableName: string) => ({ code: 4, message: `Field "${field}" type missmatch in table "${tableName}". Wanted: "${wanted}" Got: "${got}"` }),
+  FieldTypeMismatch: (wanted: string, got: string, field: string, tableName: string) => ({ code: 4, message: `Field "${field}" type missmatch in table "${tableName}". Wanted: "${wanted}" Got: "${got}"` }),
   MissingFields: (missingFields: string[], tableName: string) => ({ code: 5, message: `There are one or more missing fields in table "${tableName}" Missing: ${missingFields.join(",")}` }),
 
 } as const
@@ -104,7 +104,7 @@ export const createDatabase = (opts?: DatabaseOptions) => {
         return [null, DatabaseError.FieldNotExist(userField, tableName)] as const;
       }
       if (typeof userValue !== FieldTypeToTypeof[fieldMetadata.type]) {
-        return [null, DatabaseError.FieldTypeMissmatch(FieldTypeToTypeof[fieldMetadata.type], typeof userValue, userField, tableName)] as const;
+        return [null, DatabaseError.FieldTypeMismatch(FieldTypeToTypeof[fieldMetadata.type], typeof userValue, userField, tableName)] as const;
       }
     }
 
