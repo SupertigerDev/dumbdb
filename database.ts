@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { readLinesSync } from './utils/readLinesSync';
 
 
 const DatabaseError = {
@@ -14,25 +15,21 @@ const DatabaseError = {
 export enum QueryAction {
   CreateTable = 0,
   InsertTable = 1,
-  FindTable = 2
+  FindOneTable = 2
 }
 
 export enum FieldType {
-  string = 0
+  string = 0,
+  number = 1
 }
 
 const FieldTypeToTypeof = {
-  [FieldType.string]: "string"
+  [FieldType.string]: "string",
+  [FieldType.number]: "number"
 } as const
-
-
-const TypeofToFieldTYpe = {
-  string: FieldType.string
-} as const
-
 
 interface Field {
-  type: FieldType.string
+  type: FieldType
 }
 
 interface Table {
@@ -55,14 +52,14 @@ type InsertTableQuery = {
   data: Record<string, any>
 }
 
-type FindTableQuery = {
-  action: QueryAction.FindTable,
+type FindOneTableQuery = {
+  action: QueryAction.FindOneTable,
   tableName: string,
   data: Record<string, any>
 }
 
 
-export type Query = CreateTableQuery | InsertTableQuery | FindTableQuery
+export type Query = CreateTableQuery | InsertTableQuery | FindOneTableQuery
 
 interface DatabaseOptions {
   rootDir?: string
@@ -132,6 +129,70 @@ export const createDatabase = (opts?: DatabaseOptions) => {
     return [true, null] as const;
   }
 
+  const handleFindOneTable = (query: FindOneTableQuery) => {
+    const tableName = query.tableName;
+    const tablePath = path.join(rootDir, tableName)
+    const metadataPath = path.join(tablePath, "metadata.json");
+    const dataPath = path.join(tablePath, "data");
+
+    if (!fs.existsSync(metadataPath)) {
+      return [null, DatabaseError.TableNotExist(tableName)] as const;
+    }
+    const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf-8")) as Table;
+
+    const metadataFieldNames = Object.keys(metadata.fields);
+
+
+
+    for (let userField in query.data) {
+      const fieldMetadata = metadata.fields[userField];
+      const userValue = query.data[userField];
+
+      if (!fieldMetadata) {
+        return [null, DatabaseError.FieldNotExist(userField, tableName)] as const;
+      }
+      if (typeof userValue !== FieldTypeToTypeof[fieldMetadata.type]) {
+        return [null, DatabaseError.FieldTypeMismatch(FieldTypeToTypeof[fieldMetadata.type], typeof userValue, userField, tableName)] as const;
+      }
+    }
+
+
+    const userInput = metadataFieldNames.map(f => query.data[f])
+
+    for (const line of readLinesSync(dataPath)) {
+      const rowValues = JSON.parse(`[${line}]`)
+
+      let isMatch: boolean | undefined = undefined;
+
+      for (let fieldIndex = 0; fieldIndex < userInput.length; fieldIndex++) {
+        const searchValue = userInput[fieldIndex];
+        if (searchValue === undefined) continue;
+
+        isMatch = rowValues[fieldIndex] === searchValue;
+
+        if (isMatch === false) break;
+        break
+      }
+
+      if (isMatch) {
+
+        const fieldNames = Object.keys(metadata.fields);
+        const result: Record<string, any> = {};
+
+        for (let fieldIndex = 0; fieldIndex < rowValues.length; fieldIndex++) {
+          const fieldValue = rowValues[fieldIndex];
+          const fieldName = fieldNames[fieldIndex];
+          if (fieldName === undefined) continue;
+          result[fieldName] = fieldValue;
+        }
+
+        return [result, null]
+      }
+
+    }
+    return [null, null] as const;
+  }
+
 
   const query = (query: Query) => {
     switch (query.action) {
@@ -139,12 +200,18 @@ export const createDatabase = (opts?: DatabaseOptions) => {
         return handleCreateTable(query)
       case QueryAction.InsertTable:
         return handleInsertTable(query)
+      case QueryAction.FindOneTable:
+        return handleFindOneTable(query)
       default:
         break;
     }
-    throw new Error("Invalid query " + query.action)
+    throw new Error("Invalid query " + JSON.stringify(query))
   }
 
   return { query }
 
 }
+
+
+
+
